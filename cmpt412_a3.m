@@ -6,17 +6,40 @@ close all;
 % You have the loop currently constructing the lookup table from pixels
 % close starting at y = 480 down to y = 1
 %
+% If p, q is 0, should also probably set the z to 0 when we lookup for
+% surface normals.
+%
+% Playing with LUT now very much affects the output.. right now it is
+% low. - too many entries could give more accurate but a loss of results!
+%
+% In display, you've normalized your gradients to have unit length
+% (as unit normals)
 % ----------------------
 
-ref1 = rgb2gray(imread('./synth/sphere1.tif'));
-ref2 = rgb2gray(imread('./synth/sphere2.tif'));
-ref3 = rgb2gray(imread('./synth/sphere3.tif'));
+ref1 = rgb2gray(im2double(imread('./synth/sphere1R.png')));
+ref2 = rgb2gray(im2double(imread('./synth/sphere2R.png')));
+ref3 = rgb2gray(im2double(imread('./synth/sphere3R.png')));
+
+unknown1 = rgb2gray(im2double(imread('./synth/torus1.tif')));
+unknown2 = rgb2gray(im2double(imread('./synth/torus2.tif')));
+unknown3 = rgb2gray(im2double(imread('./synth/torus3.tif')));
+
+% imshow(unknown1);
+% imshow(unknown2);
+% imshow(unknown3);
 
 [H, W, C] = size(ref1);
 ref_imgs = {ref1, ref2, ref3};
 
-centerX = 320;
-centerY = 240;
+% These params are for the non-resized sphere roughly:
+% centerX = 320;
+% centerY = 240;
+% centerZ = 0;
+% r       = 152;
+
+% sphereXR.tif:
+centerX = 360;
+centerY = 260;
 centerZ = 0;
 r       = 152;
 
@@ -29,7 +52,7 @@ ratio_data1 = zeros(2,1);
 ratio_data2 = zeros(2,1);
 i = 1;
 
-LUT_SZ = 10000;
+LUT_SZ = 5000;
 
 % ----------------------
 
@@ -55,9 +78,9 @@ PERCENTILES = generate_indices(H, W, s_i, centerX, centerY, centerZ, r, LUT_SZ);
 % We need to reset the lookup table size, since generate_indices()
 % may return only approximately the requested indices.
 LUT_SZ = size(PERCENTILES, 2);
-plot(1:LUT_SZ, PERCENTILES);
-
 LUT = zeros(LUT_SZ, LUT_SZ, 2);
+
+%plot(1:LUT_SZ, PERCENTILES);
 
 % ----------------------
 
@@ -88,10 +111,11 @@ for YY=1:H
 
             n = get_surface_normal(x, y, r, centerX, centerY, centerZ);
             
+            % Maybe should check if ref2(y,x) ~= 0                         ?????
             if (ref2(y,x) ~= 0 || ref3(y,x) ~= 0)
                 % Get the pixel ratios across the three calibration images.
-                r1 = (double(ref1(y,x)) + 1) / (double(ref2(y,x)) + 1);
-                r2 = (double(ref2(y,x)) + 1) / (double(ref3(y,x)) + 1);
+                r1 = (double(ref1(y,x))*255 + 1) / (double(ref2(y,x))*255 + 1);
+                r2 = (double(ref2(y,x))*255 + 1) / (double(ref3(y,x))*255 + 1);
 
                 % Get the indices of the nearest ratios mapped to integer
                 % indices which we will use to store in the lookup table.
@@ -117,7 +141,7 @@ for YY=1:H
     end
 end
 
-display_gradient(im, 20);
+%display_gradient(im, 10);
 
 % im = zeros(H,W,3);
 % for y=1:H
@@ -143,7 +167,34 @@ display_gradient(im, 20);
 %     end
 % end
 
-display_gradient(im, 20);
+[unkn_H, unkn_W, unkn_C] = size(unknown1);
+im = zeros(unkn_H, unkn_W, 3);
+for y=1:unkn_H
+    for x=1:unkn_W
+        if ( unknown1(y,x) == unknown2(y,x) && unknown2(y,x) == unknown3(y,x) )
+            continue;
+        end
+        % If all pixels are 0, then skip this pixel.
+        if (unknown1(y,x) > 0 || unknown2(y,x) > 0 || unknown3(y,x) > 0)
+            % Get the intensity ratios then look up the corresponding
+            % gradient vector in the LUT.
+            r1 = (double(unknown1(y,x))*255 + 1) / (double(unknown2(y,x))*255 + 1);
+            r2 = (double(unknown2(y,x))*255 + 1) / (double(unknown3(y,x))*255 + 1);
+            
+            % Get the indices of the pixel intensity ratios.
+            [approx_r1, i_1] = min(abs(PERCENTILES - r1));
+            [approx_r2, i_2] = min(abs(PERCENTILES - r2));
+            PERCENTILES(i_1);
+            PERCENTILES(i_2);
+           
+            grad = [LUT(i_1, i_2, 1), LUT(i_1, i_2, 2), -1];
+            
+            im(y,x,:) = grad / norm(grad);
+        end
+    end
+end
+
+display_gradient(im, 10);
 
 
 
@@ -207,6 +258,7 @@ function percentiles = generate_indices(imH, imW, s_i, centerX, centerY, centerZ
                 E_2 = dot(n, s_i(2,:));
                 E_3 = dot(n, s_i(3,:));
                 
+                % maybe should check if E_1 > 0 too                        ?????
                 if ( E_2 > 0 || E_3 > 0 )
                     r1 = ((E_1 * 255) + 1) / ((E_2 * 255) + 1);
                     r2 = ((E_2 * 255) + 1) / ((E_3 * 255) + 1);
@@ -265,7 +317,7 @@ function s_i = get_s_vectors(centerX, centerY, centerZ, r, ref_imgs)
         
         % Find the brightest point on the sphere and average the
         % coordinates.
-        [row,col] = find( img >= 255 );
+        [row,col] = find( img >= 1 );
         avg_y = round(sum(row) / size(row,1));
         avg_x = round(sum(col) / size(col,1));
         
