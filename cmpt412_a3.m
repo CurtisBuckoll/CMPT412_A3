@@ -1,9 +1,18 @@
 close all;
 
+% ----------------------
+% Weird things to remember to look at later:
+%
+% You have the loop currently constructing the lookup table from pixels
+% close starting at y = 480 down to y = 1
+%
+% ----------------------
+
 ref1 = rgb2gray(imread('./synth/sphere1.tif'));
 ref2 = rgb2gray(imread('./synth/sphere2.tif'));
 ref3 = rgb2gray(imread('./synth/sphere3.tif'));
 
+[H, W, C] = size(ref1);
 ref_imgs = {ref1, ref2, ref3};
 
 centerX = 320;
@@ -24,7 +33,7 @@ LUT_SZ = 10000;
 
 % ----------------------
 
-get_s_vectors(centerX, centerY, centerZ, r, ref_imgs);
+s_i = get_s_vectors(centerX, centerY, centerZ, r, ref_imgs);
 % [H, W, C] = size(ref1);
 % [row,col] = find( ref1 >= 255 );
 % avg_y = round(sum(row) / size(row,1));
@@ -41,7 +50,7 @@ get_s_vectors(centerX, centerY, centerZ, r, ref_imgs);
 
 % ----------------------
 
-PERCENTILES = generate_indices(ref1, ref2, ref3, centerX, centerY, r, LUT_SZ);
+PERCENTILES = generate_indices(H, W, s_i, centerX, centerY, centerZ, r, LUT_SZ);
 
 % We need to reset the lookup table size, since generate_indices()
 % may return only approximately the requested indices.
@@ -53,29 +62,31 @@ LUT = zeros(LUT_SZ, LUT_SZ, 2);
 % ----------------------
 
 % We must assume all images have the same size.
-[H, W, C] = size(ref1);
+
 im = zeros(H,W,3);
 for YY=1:H
     y = (H+1)-YY;
     for x=1:W
         if ( sqrt((x-centerX)^2 + (y-centerY)^2) <= r )
             
-            % Get the surface normal n as unit vec and ad we understand 
-            % ithe orientation w.r.t the sphere. 'z' should be -ve here. (?)
-            z = sqrt( r^2 - (x - centerX)^2 - (y - centerY)^2 );
-            n = [x; y; -z] - [centerX; centerY; centerZ];
-            n = n ./ norm(n);
+%             % Get the surface normal n as unit vec and ad we understand 
+%             % ithe orientation w.r.t the sphere. 'z' should be -ve here. (?)
+%             z = sqrt( r^2 - (x - centerX)^2 - (y - centerY)^2 );
+%             n = [x; y; -z] - [centerX; centerY; centerZ];
+%             n = n ./ norm(n);
+% 
+%             % If the z component is 0, add a small delta and renormalize.
+%             DELTA = 0.01;
+%             if ( n(3) == 0 )
+%                n = n + DELTA;
+%                n = n / norm(n);
+%                %continue;
+%             end
+% 
+%             % Obtain the 'gradient' vector here: (p,q,-1).
+%             grad = n ./ -n(3);
 
-            % If the z component is 0, add a small delta and renormalize.
-            DELTA = 0.01;
-            if ( n(3) == 0 )
-               n = n + DELTA;
-               n = n / norm(n);
-               %continue;
-            end
-
-            % Obtain the 'gradient' vector here: (p,q,-1).
-            grad = n ./ -n(3);
+            n = get_surface_normal(x, y, r, centerX, centerY, centerZ);
             
             if (ref2(y,x) ~= 0 || ref3(y,x) ~= 0)
                 % Get the pixel ratios across the three calibration images.
@@ -91,15 +102,16 @@ for YY=1:H
 
                 % Store in the table.
                 if ( LUT(i_1, i_2, 1) == 0 && LUT(i_1, i_2, 2) == 0 ) 
-                    LUT(i_1, i_2, 1) = grad(1);
-                    LUT(i_1, i_2, 2) = grad(2);
-                else
+                    LUT(i_1, i_2, 1) = n(1);
+                    LUT(i_1, i_2, 2) = n(2);
+                end
+%                 else % - I don't think we want to do this at all.
 %                     % average
 %                     LUT(i_1, i_2, 1) = (grad(1) + LUT(i_1, i_2, 1)) / 2;
 %                     LUT(i_1, i_2, 2) = (grad(2) + LUT(i_1, i_2, 2)) / 2;
-                end
+%                 end
 
-                im(y,x,:) = grad;
+                im(y,x,:) = n;
             end
         end
     end
@@ -107,96 +119,29 @@ end
 
 display_gradient(im, 20);
 
-% 
-% % We must assume all images have the same size.
-% [H, W, C] = size(ref1);
-% % im = zeros(H,W,3);
+% im = zeros(H,W,3);
 % for y=1:H
 %     for x=1:W
 %         if ( sqrt((x-centerX)^2 + (y-centerY)^2) <= r )
 % 
-%             % Get the surface normal n as unit vec and ad we understand 
-%             % ithe orientation w.r.t the sphere. 'z' should be -ve here. (?)
-%             z = sqrt( r^2 - (x - centerX)^2 - (y - centerY)^2 );
-%             n = [x; y; -z] - [centerX; centerY; 0];
-%             n = n ./ norm(n);
-% 
-%             % If the z component is 0, add a small delta and renormalize.
-%             DELTA = 0.01;
-%             if ( n(3) == 0 )
-%                n = n + DELTA;
-%                n = n / norm(n);
-%                %continue;
-%             end
-% 
-%             % Obtain the 'gradient' vector here: (p,q,-1).
-%             grad = n ./ -n(3);
-% 
-%             % lookup image intensities and make a hash map or something..
-%             % ...
-%             % EXPERIMENT CODE
-% 
+%             % Get the intensity ratios then look up the corresponding
+%             % gradient vector in the LUT.
 %             r1 = (double(ref1(y,x)) + 1) / (double(ref2(y,x)) + 1);
 %             r2 = (double(ref2(y,x)) + 1) / (double(ref3(y,x)) + 1);
 %             
-% %             r1 = (r1 - (1 / 256)) / (256 - (1 / 256));
-% %             r1 = r1^EXP;
-% %             
-% %             r2 = (r2 - (1 / 256)) / (256 - (1 / 256));
-% %             r2 = r2^EXP;
+%             % Get the indices of the pixel intensity ratios.
+%             [approx_r1, i_1] = min(abs(PERCENTILES - r1));
+%             [approx_r2, i_2] = min(abs(PERCENTILES - r2));
+%             PERCENTILES(i_1);
+%             PERCENTILES(i_2);
 %            
-%             ratio_data1(:,i) = [double(ref2(y,x)); r1];
-%             ratio_data2(:,i) = [double(ref3(y,x)); r2];
+%             grad = [LUT(i_1, i_2, 1), LUT(i_1, i_2, 2), -1];
 %             
-%             %X = round(r1 * (LUT_SZ - 1)) + 1;
-%             %Y = round(r2 * (LUT_SZ - 1)) + 1;
+%             im(y,x,:) = grad;
 %             
-%             %LUT(X, Y, 1) = grad(1);
-%             %LUT(X, Y, 2) = grad(2);
-%             
-%             i = i + 1;
-%             
-%             % END EXPERIMENT CODE
 %         end
 %     end
 % end
-% 
-% %histfit(ratio_data1(2,:))
-% figure
-% plot(ratio_data1(1,:),ratio_data1(2,:), '*')
-% figure
-% plot(ratio_data2(1,:),ratio_data2(2,:), '*')
-
-[H, W, C] = size(ref1);
-im = zeros(H,W,3);
-for y=1:H
-    for x=1:W
-        if ( sqrt((x-centerX)^2 + (y-centerY)^2) <= r )
-
-            % Get the intensity ratios then look up the corresponding
-            % gradient vector in the LUT.
-            r1 = (double(ref1(y,x)) + 1) / (double(ref2(y,x)) + 1);
-            r2 = (double(ref2(y,x)) + 1) / (double(ref3(y,x)) + 1);
-            
-            % Get the indices of the pixel intensity ratios.
-            [approx_r1, i_1] = min(abs(PERCENTILES - r1));
-            [approx_r2, i_2] = min(abs(PERCENTILES - r2));
-            PERCENTILES(i_1);
-            PERCENTILES(i_2);
-           
-            grad = [LUT(i_1, i_2, 1), LUT(i_1, i_2, 2), -1];
-            
-%             while (grad == [0 0 -1])
-%                 i_1 = i_1 - 1;
-%                 i_2 = i_2 - 1;
-%                 grad = [LUT(i_1, i_2, 1), LUT(i_1, i_2, 2), -1];
-%             end
-            im(y,x,:) = grad;
-            
-            % END EXPERIMENT CODE
-        end
-    end
-end
 
 display_gradient(im, 20);
 
@@ -221,7 +166,67 @@ end
 
 % ------------------------------------------------------------------
 % 
-function percentiles = generate_indices(im1, im2, im3, centerX, centerY, r, num_entries)
+function percentiles = generate_indices(imH, imW, s_i, centerX, centerY, centerZ, r, num_entries)
+
+    % We must assume all images have the same size.
+    ratio_data = zeros(1,1);
+    i = 1;
+    s_1 = s_i(1,:);
+    s_2 = s_i(2,:);
+    s_3 = s_i(3,:);
+
+    for y=1:imH
+        for x=1:imW
+            if ( sqrt((x-centerX)^2 + (y-centerY)^2) <= r )
+
+%                 % Get the surface normal n as unit vec and as we understand 
+%                 % the orientation w.r.t the sphere. 'z' should be -ve here. (?)
+%                 % Note - This work will be reperformed when we actually input 
+%                 % the data into table, but we also need it here to determine
+%                 % the distribution of the table entries.
+%                 z = sqrt( r^2 - (x - centerX)^2 - (y - centerY)^2 );
+%                 n = [x; y; -z] - [centerX; centerY; centerZ];
+%                 n = n ./ norm(n);
+% 
+%                 % If the z component is 0, add a small delta and renormalize.
+%                 DELTA = 0.01;
+%                 if ( n(3) == 0 )
+%                    n = n + DELTA;
+%                    n = n / norm(n);
+%                    %continue;
+%                 end
+% 
+%                 % Obtain the 'gradient' vector here: (p,q,-1).
+%                 grad = n ./ -n(3);
+                n = get_surface_normal(x, y, r, centerX, centerY, centerZ);
+                
+                % Now we can compute the 'intensities' from the dot
+                % products of the light intensities (s_i) and the supposed
+                % surface normal (n).
+                E_1 = dot(n, s_i(1,:));
+                E_2 = dot(n, s_i(2,:));
+                E_3 = dot(n, s_i(3,:));
+                
+                if ( E_2 > 0 || E_3 > 0 )
+                    r1 = ((E_1 * 255) + 1) / ((E_2 * 255) + 1);
+                    r2 = ((E_2 * 255) + 1) / ((E_3 * 255) + 1);
+
+                    ratio_data(i) = r1;
+                    ratio_data(i+1) = r2;
+
+                    i = i + 2;
+                end
+            end
+        end
+    end
+    
+    p =(1:100/num_entries:100);
+    percentiles = prctile(ratio_data,p);
+end
+
+% ------------------------------------------------------------------
+% 
+function percentiles = generate_indices_old(im1, im2, im3, centerX, centerY, r, num_entries)
 
     % We must assume all images have the same size.
     [H, W, C]  = size(im1);
@@ -254,6 +259,7 @@ end
 function s_i = get_s_vectors(centerX, centerY, centerZ, r, ref_imgs)
 
     s_i = zeros(3,3);
+    
     for i=1:3
         img = ref_imgs{i};
         
@@ -268,11 +274,40 @@ function s_i = get_s_vectors(centerX, centerY, centerZ, r, ref_imgs)
 %         imshow(img);
         
         z = sqrt( r^2 - (avg_x - centerX)^2 - (avg_y - centerY)^2 );
-        s = [avg_x; avg_y; z] - [centerX; centerY; centerZ];
+        s = [avg_x; avg_y; -z] - [centerX; centerY; centerZ];
         s_i(i,:) = s ./ norm(s);
     end
 end
 
+% ------------------------------------------------------------------
+%
+function grad = get_surface_normal(x, y, r, centerX, centerY, centerZ)
+    %
+    % Get the surface normal/gradient n as unit vec and as we understand 
+    % the orientation w.r.t the sphere. 'z' should be -ve here. (?)
+    %
+    % Returns the surface normal (p,q,-1) where (p,q) is the gradient
+    % at the supplied point.
+    %
+    % Note - This work will be reperformed when we actually input 
+    % the data into table, but we also need it here to determine
+    % the distribution of the table entries.
+    
+    DELTA = 0.01;
+    z = sqrt( r^2 - (x - centerX)^2 - (y - centerY)^2 );
+    n = [x; y; -z] - [centerX; centerY; centerZ];
+    n = n ./ norm(n);
+
+    % If the z component is 0, add a small delta and renormalize.
+    if ( n(3) == 0 )
+       n = n + DELTA;
+       n = n / norm(n);
+       %continue;
+    end
+
+    % Obtain the 'gradient' vector here: (p,q,-1).
+    grad = n ./ -n(3);
+end
 
 
 
