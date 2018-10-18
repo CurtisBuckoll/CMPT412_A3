@@ -11,6 +11,7 @@ close all;
 %
 % Playing with LUT now very much affects the output.. right now it is
 % low. - too many entries could give more accurate but a loss of results!
+% Note - 500 Gives representation of the hexagon! (any higher we lose it.)
 %
 % In display, you've normalized your gradients to have unit length
 % (as unit normals)
@@ -20,9 +21,9 @@ ref1 = rgb2gray(im2double(imread('./synth/sphere1R.png')));
 ref2 = rgb2gray(im2double(imread('./synth/sphere2R.png')));
 ref3 = rgb2gray(im2double(imread('./synth/sphere3R.png')));
 
-unknown1 = rgb2gray(im2double(imread('./synth/torus1.tif')));
-unknown2 = rgb2gray(im2double(imread('./synth/torus2.tif')));
-unknown3 = rgb2gray(im2double(imread('./synth/torus3.tif')));
+unknown1 = rgb2gray(im2double(imread('./synth/cone1.tif')));
+unknown2 = rgb2gray(im2double(imread('./synth/cone2.tif')));
+unknown3 = rgb2gray(im2double(imread('./synth/cone3.tif')));
 
 % imshow(unknown1);
 % imshow(unknown2);
@@ -52,7 +53,7 @@ ratio_data1 = zeros(2,1);
 ratio_data2 = zeros(2,1);
 i = 1;
 
-LUT_SZ = 5000;
+LUT_SZ = 10000;
 
 % ----------------------
 
@@ -172,10 +173,10 @@ im = zeros(unkn_H, unkn_W, 3);
 for y=1:unkn_H
     for x=1:unkn_W
         
-%         % Do we actually want to keep this?                                ??????
-%         if ( unknown1(y,x) == unknown2(y,x) && unknown2(y,x) == unknown3(y,x) )
-%             continue;
-%         end
+        % Do we actually want to keep this?                                ??????
+        if ( unknown1(y,x) == unknown2(y,x) && unknown2(y,x) == unknown3(y,x) )
+            continue;
+        end
 
         % If all pixels are 0, then skip this pixel.
         if (unknown1(y,x) > 0 || unknown2(y,x) > 0 || unknown3(y,x) > 0)
@@ -192,9 +193,10 @@ for y=1:unkn_H
            
             grad = [LUT(i_1, i_2, 1), LUT(i_1, i_2, 2), -1];
             grad = grad / norm(grad);
-            
-%             if (grad(1,1) == 0 && grad(1,2) == 0)
-%             if ( norm(grad) > 0 )
+
+%             grad = [LUT(i_1, i_2, 1), LUT(i_1, i_2, 2), 0];
+%             
+%             if (grad(1,1) ~= 0 || grad(1,2) ~= 0)
 %                 grad(1,3) = -1;
 %                 grad = grad / norm(grad);
 %             end
@@ -204,11 +206,43 @@ for y=1:unkn_H
     end
 end
 
-im = interpolate_normals(im);
+%im = interpolate_normals(im);
 
+im = interpolate_(im);
 display_gradient(im, 10);
 
-imshow(im)
+im = imresize(im, 0.25);
+
+% imshow(im)
+
+im = gradient_to_intensity(im(:,:,1), im(:,:,2));
+
+MAX = max(im(:))
+MIN = min(im(:))
+
+
+imshow(im ./ MIN)
+
+% ------------------------------------------------------------------
+% 
+function grad_im = interpolate_(im)
+
+    [H,W,C] = size(im);
+    im_T = zeros(W,H,C);
+    
+    im_T(:,:,1) = im(:,:,1)';
+    im_T(:,:,2) = im(:,:,2)';
+    im_T(:,:,3) = im(:,:,3)';
+    
+    im_T = interpolate_normals(im_T);
+    
+    grad_im(:,:,1) = im_T(:,:,1)';
+    grad_im(:,:,2) = im_T(:,:,2)';
+    grad_im(:,:,3) = im_T(:,:,3)';
+    
+    grad_im = interpolate_normals(grad_im);
+    
+end
 
 
 % ------------------------------------------------------------------
@@ -216,8 +250,8 @@ imshow(im)
 function grad_im = interpolate_normals(grad_im)
 
     rough_mask = grad_im(:,:,1) > 0 | grad_im(:,:,2) > 0;
-    rough_mask = b
-    imshow(double(rough_mask));
+    rough_mask = imdilate(rough_mask, strel('disk',7));
+    %imshow(double(rough_mask));
     
     [H,W,C] = size(grad_im);
     
@@ -226,6 +260,12 @@ function grad_im = interpolate_normals(grad_im)
         last_ind              = 0;
         
         for x=1:W
+            % This first part is to try to interpolate only parts of the
+            % image that we care about.
+            if (~rough_mask(y,x))
+                last_ind      = 0;
+            end
+            
             if (grad_im(y,x,1) > 0 || grad_im(y,x,2) > 0 )
                 % We found a non-zero gradient.
                 if (in_zero_row)
@@ -234,31 +274,37 @@ function grad_im = interpolate_normals(grad_im)
                         % The last gradient index is should be greater than
                         % zero to indicate that we actually have a value to
                         % interpolate from.
-
-                        % So let's actually interpolate the values:
                         curr_ind = x;
-                        dx = curr_ind - last_ind;
-                        dpdx = (grad_im(y, curr_ind, 1) - grad_im(y, last_ind, 1)) / dx;
-                        dqdx = (grad_im(y, curr_ind, 2) - grad_im(y, last_ind, 2)) / dx;
-                        dzdx = (grad_im(y, curr_ind, 3) - grad_im(y, last_ind, 3)) / dx;
-                        p_interp = grad_im(y,last_ind,1);
-                        q_interp = grad_im(y,last_ind,2);
-                        z_interp = grad_im(y,last_ind,3);
-
-                        %[grad_im(y, last_ind, 1), grad_im(y, last_ind, 2), grad_im(y, last_ind, 3)]
-
                         for k=(last_ind + 1):(curr_ind-1)
-                            %[grad_im(y, k, 1), grad_im(y, k, 2), grad_im(y, k, 3)]
-                            %norm([grad_im(y,k,1), grad_im(y,k,2), grad_im(y,k,3)])
-                            p_interp = p_interp + dpdx;
-                            q_interp = q_interp + dqdx;
-                            z_interp = z_interp + dzdx;
-
-                            grad_im(y, k, 1) = p_interp;
-                            grad_im(y, k, 2) = q_interp;
-                            grad_im(y, k, 3) = z_interp;
-                            %[grad_im(y, k, 1), grad_im(y, k, 2), grad_im(y, k, 3)]
+                            grad_im(y, k, 1) = (grad_im(y, k-1, 1) + grad_im(y-1, k, 1) + grad_im(y+1, k, 1)) / 3;
+                            grad_im(y, k, 2) = (grad_im(y, k-1, 2) + grad_im(y-1, k, 2) + grad_im(y+1, k, 2)) / 3;
+                            grad_im(y, k, 3) = (grad_im(y, k-1, 3) + grad_im(y-1, k, 3) + grad_im(y+1, k, 3)) / 3;
                         end
+
+%                         % So let's actually interpolate the values:
+%                         curr_ind = x;
+%                         dx = curr_ind - last_ind;
+%                         dpdx = (grad_im(y, curr_ind, 1) - grad_im(y, last_ind, 1)) / dx;
+%                         dqdx = (grad_im(y, curr_ind, 2) - grad_im(y, last_ind, 2)) / dx;
+%                         dzdx = (grad_im(y, curr_ind, 3) - grad_im(y, last_ind, 3)) / dx;
+%                         p_interp = grad_im(y,last_ind,1);
+%                         q_interp = grad_im(y,last_ind,2);
+%                         z_interp = grad_im(y,last_ind,3);
+% 
+%                         %[grad_im(y, last_ind, 1), grad_im(y, last_ind, 2), grad_im(y, last_ind, 3)]
+% 
+%                         for k=(last_ind + 1):(curr_ind-1)
+%                             %[grad_im(y, k, 1), grad_im(y, k, 2), grad_im(y, k, 3)]
+%                             %norm([grad_im(y,k,1), grad_im(y,k,2), grad_im(y,k,3)])
+%                             p_interp = p_interp + dpdx;
+%                             q_interp = q_interp + dqdx;
+%                             z_interp = z_interp + dzdx;
+% 
+%                             grad_im(y, k, 1) = p_interp;
+%                             grad_im(y, k, 2) = q_interp;
+%                             grad_im(y, k, 3) = z_interp;
+%                             %[grad_im(y, k, 1), grad_im(y, k, 2), grad_im(y, k, 3)]
+%                         end
                         
                         last_ind            = curr_ind;
                     end
@@ -277,75 +323,77 @@ function grad_im = interpolate_normals(grad_im)
             end
         end 
     end
-end
-
-% ------------------------------------------------------------------
-% 
-function grad_im = interpolate_normals2(grad_im)
-
-    [H,W,C] = size(grad_im);
     
-    for y=1:H
-        in_zero_row           = false;
-        found_first_nonzero   = false;
-        last_ind              = 0;
-        
-        for x=1:W
-            if (in_zero_row)
-                % Currently counting a row of zeros;
-                if (norm([grad_im(y,x,1), grad_im(y,x,2), grad_im(y,x,3)]) > 0)
-                    % And now we've encountered a non-zero gradient, so
-                    % interpolate between this and the last non-zero.
-                    if (last_ind > 0)
-                       % The last gradient index is should be greater than
-                       % zero to indicate that we actually have a value to
-                       % interpolate from.
-                       
-                       % So let's actually interpolate the values:
-                       curr_ind = x;
-                       dx = curr_ind - last_ind;
-                       dpdx = (grad_im(y, curr_ind, 1) - grad_im(y, last_ind, 1)) / dx;
-                       dqdx = (grad_im(y, curr_ind, 2) - grad_im(y, last_ind, 2)) / dx;
-                       dzdx = (grad_im(y, curr_ind, 3) - grad_im(y, last_ind, 3)) / dx;
-                       p_interp = grad_im(y,last_ind,1);
-                       q_interp = grad_im(y,last_ind,2);
-                       z_interp = grad_im(y,last_ind,3);
-                       
-                       %[grad_im(y, last_ind, 1), grad_im(y, last_ind, 2), grad_im(y, last_ind, 3)]
-                       
-                       for k=(last_ind + 1):(curr_ind-1)
-                           [grad_im(y, k, 1), grad_im(y, k, 2), grad_im(y, k, 3)]
-                           p_interp = p_interp + dpdx;
-                           q_interp = q_interp + dqdx;
-                           z_interp = z_interp + dzdx;
-                           
-                           grad_im(y, k, 1) = p_interp;
-                           grad_im(y, k, 2) = q_interp;
-                           grad_im(y, k, 3) = z_interp;
-                           %[grad_im(y, k, 1), grad_im(y, k, 2), grad_im(y, k, 3)]
-                       end
-                    end
-                   
-                    %[grad_im(y, curr_ind, 1), grad_im(y, curr_ind, 2), grad_im(y, curr_ind, 3)]
-                    
-                    in_zero_row         = false;
-                    found_first_nonzero = true;
-                else
-                    % Do nothing.
-                end
-            else
-                % Currently counting a row of non-zero pixels.
-                if (norm([grad_im(y,x,1), grad_im(y,x,2), grad_im(y,x,3)]) > 0)
-                    % We've just found another consecutive non-zero
-                    % gradient, so update the 'last' gradient.
-                    last_ind            = x;
-                else
-                    in_zero_row         = true;
-                end   
-            end
-        end 
-    end
+    %grad_im = imgaussfilt(grad_im, 0.9);
 end
+
+% % ------------------------------------------------------------------
+% % 
+% function grad_im = interpolate_normals2(grad_im)
+% 
+%     [H,W,C] = size(grad_im);
+%     
+%     for y=1:H
+%         in_zero_row           = false;
+%         found_first_nonzero   = false;
+%         last_ind              = 0;
+%         
+%         for x=1:W
+%             if (in_zero_row)
+%                 % Currently counting a row of zeros;
+%                 if (norm([grad_im(y,x,1), grad_im(y,x,2), grad_im(y,x,3)]) > 0)
+%                     % And now we've encountered a non-zero gradient, so
+%                     % interpolate between this and the last non-zero.
+%                     if (last_ind > 0)
+%                        % The last gradient index is should be greater than
+%                        % zero to indicate that we actually have a value to
+%                        % interpolate from.
+%                        
+%                        % So let's actually interpolate the values:
+%                        curr_ind = x;
+%                        dx = curr_ind - last_ind;
+%                        dpdx = (grad_im(y, curr_ind, 1) - grad_im(y, last_ind, 1)) / dx;
+%                        dqdx = (grad_im(y, curr_ind, 2) - grad_im(y, last_ind, 2)) / dx;
+%                        dzdx = (grad_im(y, curr_ind, 3) - grad_im(y, last_ind, 3)) / dx;
+%                        p_interp = grad_im(y,last_ind,1);
+%                        q_interp = grad_im(y,last_ind,2);
+%                        z_interp = grad_im(y,last_ind,3);
+%                        
+%                        %[grad_im(y, last_ind, 1), grad_im(y, last_ind, 2), grad_im(y, last_ind, 3)]
+%                        
+%                        for k=(last_ind + 1):(curr_ind-1)
+%                            [grad_im(y, k, 1), grad_im(y, k, 2), grad_im(y, k, 3)]
+%                            p_interp = p_interp + dpdx;
+%                            q_interp = q_interp + dqdx;
+%                            z_interp = z_interp + dzdx;
+%                            
+%                            grad_im(y, k, 1) = p_interp;
+%                            grad_im(y, k, 2) = q_interp;
+%                            grad_im(y, k, 3) = z_interp;
+%                            %[grad_im(y, k, 1), grad_im(y, k, 2), grad_im(y, k, 3)]
+%                        end
+%                     end
+%                    
+%                     %[grad_im(y, curr_ind, 1), grad_im(y, curr_ind, 2), grad_im(y, curr_ind, 3)]
+%                     
+%                     in_zero_row         = false;
+%                     found_first_nonzero = true;
+%                 else
+%                     % Do nothing.
+%                 end
+%             else
+%                 % Currently counting a row of non-zero pixels.
+%                 if (norm([grad_im(y,x,1), grad_im(y,x,2), grad_im(y,x,3)]) > 0)
+%                     % We've just found another consecutive non-zero
+%                     % gradient, so update the 'last' gradient.
+%                     last_ind            = x;
+%                 else
+%                     in_zero_row         = true;
+%                 end   
+%             end
+%         end 
+%     end
+% end
 
 % ------------------------------------------------------------------
 % 
@@ -423,6 +471,7 @@ function percentiles = generate_indices(imH, imW, s_i, centerX, centerY, centerZ
     
     p =(1:100/num_entries:100);
     percentiles = prctile(ratio_data,p);
+    
 end
 
 % ------------------------------------------------------------------
@@ -510,6 +559,160 @@ function grad = get_surface_normal(x, y, r, centerX, centerY, centerZ)
     grad = n ./ -n(3);
 end
 
+
+% % ------------------------------------------------------------------
+% %
+% function img = gradient_to_intensity2(p, q)
+% 
+%     [imh, imw, nb] = size(p);
+%     % Set up the im2var mapping matrix.
+%     im2var = zeros(imh, imw);
+%     im2var(1:imh*imw) = 1:imh*imw;
+%     
+%     % For each pixel we need two equations, and so A should have 
+%     % 2*(#pix(src)) + 1 rows, where the + 1 is for the boundary condition. 
+%     % We need #pix(src) columns since we need to consider every pixel in
+%     % src.
+%     A = sparse(2*imw*imh + 1, imw*imh);
+%     b = zeros(2*imw*imh + 1, 1);
+% 
+%     e = 0;
+%     
+%     for y=1:(imh)
+%         for x=1:(imw)
+%             
+% %             if (p(y,x) == 0 && q(y,x) == 0)
+% %                 continue;
+% %             end
+%             
+%             e= e + 1;
+%             
+%             % Objective 1
+%             if ( x ~= imw )
+%                 
+%                 % check bounds - at rightmost cases we leave the gradient
+%                 % at zero, and so we can just ignore.
+%                 A(e, im2var(y,x+1)) =  1;
+%                 A(e, im2var(y,x))   = -1;
+%                 b(e)                = p(y,x); 
+%             end
+%                         
+%             e= e + 1;
+%             
+%             % Objective 2
+%             if ( y ~= imh )
+%                 
+%                 % check bounds - at bottommost cases we leave the gradient
+%                 % at zero, and so we can just ignore.
+%                 A(e, im2var(y+1,x)) =  1;
+%                 A(e, im2var(y,x))   = -1;   
+%                 b(e)                = q(y,x);
+%             end
+%         end
+%     end
+%    
+%     % Objective 3
+%     e = e + 1;
+%     A(e, im2var(1,1)) = 1;
+%     b(e) = 0;
+%    
+%     % Solve the system.
+%     v = A\b;
+%     
+%     % Copy the pixels from the solution vector back into the image matrix
+%     % which will be returned.
+%     img = zeros(imh, imw);
+%     
+%     ind = 1;
+%     for x=1:imw
+%        for y=1:imh
+%            img(y,x) = v(ind);
+%            ind = ind + 1;
+%        end
+%     end
+% end
+
+% ------------------------------------------------------------------
+%
+function img = gradient_to_intensity(p, q)
+
+    [imh, imw, nb] = size(p);
+    % Set up the im2var mapping matrix.
+    im2var = zeros(imh, imw);
+    im2var(1:imh*imw) = 1:imh*imw;
+    
+    % For each pixel we need two equations, and so A should have 
+    % 2*(#pix(src)) + 1 rows, where the + 1 is for the boundary condition. 
+    % We need #pix(src) columns since we need to consider every pixel in
+    % src.
+    A = sparse(4*imw*imh + 1, imw*imh);
+    b = zeros(4*imw*imh + 1, 1);
+
+    e = 0;
+    
+    for y=1:(imh)
+        for x=1:(imw)
+
+            % Objective 1
+            if ( x ~= imw )
+                e = e + 1;
+                % check bounds - at rightmost cases we leave the gradient
+                % at zero, and so we can just ignore.
+                A(e, im2var(y,x+1)) =  1;
+                A(e, im2var(y,x))   = -1;
+                b(e)                = p(y,x+1); 
+            end
+                        
+            % Objective 2
+            if ( y ~= imh )
+                e = e + 1;
+                % check bounds - at bottommost cases we leave the gradient
+                % at zero, and so we can just ignore.
+                A(e, im2var(y+1,x)) =  1;
+                A(e, im2var(y,x))   = -1;   
+                b(e)                = q(y+1,x);
+            end
+            
+            if ( x ~= 1 )
+                e = e + 1;
+                % check bounds - at leftmost cases we leave the gradient
+                % at zero, and so we can just ignore.
+                A(e, im2var(y,x-1)) =  1;
+                A(e, im2var(y,x))   = -1;
+                b(e)                = -p(y,x-1);
+            end
+
+            if ( y ~= 1 )
+                e = e + 1;
+                % check bounds - at topmost cases we leave the gradient
+                % at zero, and so we can just ignore.
+                A(e, im2var(y-1,x)) =  1;
+                A(e, im2var(y,x))   = -1;   
+                b(e)                = -q(y-1,x);
+            end
+        end
+    end
+   
+    % Objective 3
+    e = e + 1;
+    A(e, im2var(1,1)) = 1;
+    b(e) = 0;
+   
+    % Solve the system.
+    v = A\b;
+    
+    % Copy the pixels from the solution vector back into the image matrix
+    % which will be returned.
+    img = zeros(imh, imw);
+    
+    ind = 1;
+    for x=1:imw
+       for y=1:imh
+           img(y,x) = v(ind);
+           ind = ind + 1;
+       end
+    end
+end
 
 
 
