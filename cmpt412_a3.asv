@@ -15,15 +15,17 @@ close all;
 %
 % In display, you've normalized your gradients to have unit length
 % (as unit normals)
+%
+% Double check your interpolation - you changed it from lerp.s
 % ----------------------
 
 ref1 = rgb2gray(im2double(imread('./synth/sphere1R.png')));
 ref2 = rgb2gray(im2double(imread('./synth/sphere2R.png')));
 ref3 = rgb2gray(im2double(imread('./synth/sphere3R.png')));
 
-unknown1 = rgb2gray(im2double(imread('./synth/cone1.tif')));
-unknown2 = rgb2gray(im2double(imread('./synth/cone2.tif')));
-unknown3 = rgb2gray(im2double(imread('./synth/cone3.tif')));
+unknown1 = rgb2gray(im2double(imread('./synth/octogon1.tif')));
+unknown2 = rgb2gray(im2double(imread('./synth/octogon2.tif')));
+unknown3 = rgb2gray(im2double(imread('./synth/octogon3.tif')));
 
 % imshow(unknown1);
 % imshow(unknown2);
@@ -53,7 +55,7 @@ ratio_data1 = zeros(2,1);
 ratio_data2 = zeros(2,1);
 i = 1;
 
-LUT_SZ = 10000;
+LUT_SZ = 500;
 
 % ----------------------
 
@@ -93,23 +95,6 @@ for YY=1:H
     for x=1:W
         if ( sqrt((x-centerX)^2 + (y-centerY)^2) <= r )
             
-%             % Get the surface normal n as unit vec and ad we understand 
-%             % ithe orientation w.r.t the sphere. 'z' should be -ve here. (?)
-%             z = sqrt( r^2 - (x - centerX)^2 - (y - centerY)^2 );
-%             n = [x; y; -z] - [centerX; centerY; centerZ];
-%             n = n ./ norm(n);
-% 
-%             % If the z component is 0, add a small delta and renormalize.
-%             DELTA = 0.01;
-%             if ( n(3) == 0 )
-%                n = n + DELTA;
-%                n = n / norm(n);
-%                %continue;
-%             end
-% 
-%             % Obtain the 'gradient' vector here: (p,q,-1).
-%             grad = n ./ -n(3);
-
             n = get_surface_normal(x, y, r, centerX, centerY, centerZ);
             
             % Maybe should check if ref2(y,x) ~= 0                         ?????
@@ -141,6 +126,10 @@ for YY=1:H
         end
     end
 end
+
+
+
+% ---------------------------------------------
 
 %display_gradient(im, 10);
 
@@ -211,17 +200,16 @@ end
 im = interpolate_(im);
 display_gradient(im, 10);
 
-im = imresize(im, 0.25);
-
-% imshow(im)
-
 im = gradient_to_intensity(im(:,:,1), im(:,:,2));
 
 MAX = max(im(:))
 MIN = min(im(:))
 
+im = (im - MAX) ./ (MIN - MAX);
+imshow(im);
+[unknH, unknW, unknC] = size(im);
 
-imshow(im ./ MIN)
+surf(1:unknW, 1:unknH, im)
 
 % ------------------------------------------------------------------
 % 
@@ -398,6 +386,7 @@ end
 % ------------------------------------------------------------------
 % 
 function res = display_gradient(grad, sz)
+    grad = flip(grad,1);
     [h, w, c] = size(grad);
     avg_horiz = grad((1:sz:h),:,:);
     for i=1:sz-1
@@ -636,6 +625,14 @@ end
 %
 function img = gradient_to_intensity(p, q)
 
+    RESIZE_TO_CONVERT = true;
+    RS_RATIO = 0.25;
+    
+    if RESIZE_TO_CONVERT
+        p = imresize(p, RS_RATIO);
+        q = imresize(q, RS_RATIO);
+    end
+    
     [imh, imw, nb] = size(p);
     % Set up the im2var mapping matrix.
     im2var = zeros(imh, imw);
@@ -660,7 +657,7 @@ function img = gradient_to_intensity(p, q)
                 % at zero, and so we can just ignore.
                 A(e, im2var(y,x+1)) =  1;
                 A(e, im2var(y,x))   = -1;
-                b(e)                = p(y,x+1); 
+                b(e)                = p(y,x); 
             end
                         
             % Objective 2
@@ -670,7 +667,7 @@ function img = gradient_to_intensity(p, q)
                 % at zero, and so we can just ignore.
                 A(e, im2var(y+1,x)) =  1;
                 A(e, im2var(y,x))   = -1;   
-                b(e)                = q(y+1,x);
+                b(e)                = q(y,x);
             end
             
             if ( x ~= 1 )
@@ -711,6 +708,10 @@ function img = gradient_to_intensity(p, q)
            img(y,x) = v(ind);
            ind = ind + 1;
        end
+    end
+    
+    if RESIZE_TO_CONVERT
+        img = imresize(img, 1 / RS_RATIO);
     end
 end
 

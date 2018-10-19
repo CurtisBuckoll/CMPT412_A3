@@ -21,11 +21,11 @@ ref1 = rgb2gray(im2double(imread('./synth/sphere1R.png')));
 ref2 = rgb2gray(im2double(imread('./synth/sphere2R.png')));
 ref3 = rgb2gray(im2double(imread('./synth/sphere3R.png')));
 
-unknown1 = rgb2gray(im2double(imread('./synth/sphere1.tif')));
-unknown2 = rgb2gray(im2double(imread('./synth/sphere2.tif')));
-unknown3 = rgb2gray(im2double(imread('./synth/sphere3.tif')));
+unknown1 = rgb2gray(im2double(imread('./synth/cone1.tif')));
+unknown2 = rgb2gray(im2double(imread('./synth/cone2.tif')));
+unknown3 = rgb2gray(im2double(imread('./synth/cone3.tif')));
 
-% imshow(unknown1);
+ imshow(unknown1);
 % imshow(unknown2);
 % imshow(unknown3);
 
@@ -211,7 +211,7 @@ end
 im = interpolate_(im);
 display_gradient(im, 10);
 
-im = imresize(im, 0.25);
+%im = imresize(im, 0.25);
 
 % imshow(im)
 
@@ -638,6 +638,14 @@ end
 %
 function img = gradient_to_intensity(p, q)
 
+    RESIZE_TO_CONVERT = true;
+    RS_RATIO = 0.25;
+    
+    if RESIZE_TO_CONVERT
+        p = imresize(p, RS_RATIO);
+        q = imresize(q, RS_RATIO);
+    end
+    
     [imh, imw, nb] = size(p);
     % Set up the im2var mapping matrix.
     im2var = zeros(imh, imw);
@@ -714,7 +722,10 @@ function img = gradient_to_intensity(p, q)
            ind = ind + 1;
        end
     end
+    
+%     if RESIZE_TO_CONVERT
+%         img = imresize(img, 1 / RS_RATIO);
+%     end
 end
-
 
 
