@@ -25,13 +25,13 @@ ref1 = rgb2gray(im2double(imread('./real/sphere-lamp1.tif')));
 ref2 = rgb2gray(im2double(imread('./real/sphere-lamp3.tif')));
 ref3 = rgb2gray(im2double(imread('./real/sphere-lamp2.tif')));
 
-unknown1 = rgb2gray(im2double(imread('./synth/cone1.tif')));
-unknown2 = rgb2gray(im2double(imread('./synth/cone2.tif')));
-unknown3 = rgb2gray(im2double(imread('./synth/cone3.tif')));
+% unknown1 = rgb2gray(im2double(imread('./synth/sphere1.tif')));
+% unknown2 = rgb2gray(im2double(imread('./synth/sphere2.tif')));
+% unknown3 = rgb2gray(im2double(imread('./synth/sphere3.tif')));
 
-unknown1 = rgb2gray(im2double(imread('./real/cylinder-lamp1.tif')));
-unknown2 = rgb2gray(im2double(imread('./real/cylinder-lamp3.tif')));
-unknown3 = rgb2gray(im2double(imread('./real/cylinder-lamp2.tif')));
+unknown1 = rgb2gray(im2double(imread('./real/sphere-lamp1.tif')));
+unknown2 = rgb2gray(im2double(imread('./real/sphere-lamp3.tif')));
+unknown3 = rgb2gray(im2double(imread('./real/sphere-lamp2.tif')));
 
 % imshow(unknown1);
 % imshow(unknown2);
@@ -52,100 +52,142 @@ centerY = 260;
 centerZ = 0;
 r       = 152;
 
-% imshow(ref1);
-% imshow(ref2);
-% imshow(ref3);
-% imshow(ref1);
 
-ratio_data1 = zeros(2,1);
-ratio_data2 = zeros(2,1);
-i = 1;
-
-LUT_SZ = 500;
-CREATE_TABLE = false;
 
 % ----------------------
 
 s_i = get_s_vectors(centerX, centerY, centerZ, r, ref_imgs);
 
-% ----------------------
 
-if ( CREATE_TABLE )
-    [LUT, LUT_SZ, PERCENTILES] = generate_table(s_i, LUT_SZ);
-end
-
-
-% Need this for later..
-[nz_row_ind, nz_col_ind] = find(abs(LUT(:,:,1)) + abs(LUT(:,:,2)) > 0);
 
 % -----------------------
 
 [unkn_H, unkn_W, unkn_C] = size(unknown1);
-normal_im = zeros(unkn_H, unkn_W, 3);
-grad_im   = zeros(unkn_H, unkn_W, 3);
+im = zeros(unkn_H, unkn_W, 3);
 for y=1:unkn_H
     for x=1:unkn_W
+        
         % If all pixels are 0, then skip this pixel.
         if (unknown1(y,x) > 0 && unknown2(y,x) > 0 && unknown3(y,x) > 0)
             % Get the intensity ratios then look up the corresponding
             % gradient vector in the LUT.
-            r1 = (double(unknown1(y,x))*255 + 1) / (double(unknown2(y,x))*255 + 1);
-            r2 = (double(unknown2(y,x))*255 + 1) / (double(unknown3(y,x))*255 + 1);
+            r1 = (unknown1(y,x)) / (unknown2(y,x));
+            r2 = (unknown2(y,x)) / (unknown3(y,x));
             
-            % Get the indices of the pixel intensity ratios.
-            [approx_r1, i_1] = min(abs(PERCENTILES - r1));
-            [approx_r2, i_2] = min(abs(PERCENTILES - r2));
-            PERCENTILES(i_1);
-            PERCENTILES(i_2);
-           
-            grad = [LUT(i_1, i_2, 1), -LUT(i_1, i_2, 2), 1];
-
-            % ---------------------------------------
+            A = [ s_i(1,1) - r1*s_i(2,1), s_i(1,2) - r1*s_i(2,2);
+                  s_i(2,1) - r2*s_i(3,1), s_i(2,2) - r2*s_i(3,2) ];
+              
+            b = [ s_i(1,3) - r1*s_i(2,3); 
+                  s_i(2,3) - r2*s_i(3,3) ];
             
-            if (grad(1,1) == 0 && grad(1,2) == 0)
-                % Find the nearest non-zero.
-                distances = (nz_row_ind - i_1).^2 + (nz_col_ind - i_2).^2;
-                
-                [min_dist, new_idx] = min(distances);
-                
-                new_i_1 = nz_row_ind(new_idx);
-                new_i_2 = nz_col_ind(new_idx);
-                grad = [LUT(new_i_1, new_i_2, 1), -LUT(new_i_1, new_i_2, 2), 1];
-            end
+            GRAD = A\b;
+            p = GRAD(1);
+            q = GRAD(2);
             
-            % ---------------------------------------
+            % leave the q unflipped to correct for the image being flipped.
+            n = [-p, q, 1];
+            n = n / norm(n);
             
-            grad_im(y,x,:)   = grad;
-            normal_im(y,x,:) = grad / norm(grad);
-            
+            im(y,x,:) = n;
         end
     end
 end
 
-display_gradient(normal_im, 20);
+%im = interpolate_(im);
+display_gradient(im, 10);
 
-imshow(normal_im);
+%im = imresize(im, 0.25);
 
+imshow(im);
 
-% TESTTIGMG
-grad_im = normal_im;
+im = gradient_to_intensity(im(:,:,1), im(:,:,2));
 
-grad_im = gradient_to_intensity(grad_im(:,:,1), grad_im(:,:,2));
+MAX = max(im(:))
+MIN = min(im(:))
 
-% Maybe some sort of clamping would be useful here?
+im = (im - MAX) ./ (MIN - MAX);
+imshow(imresize(im,4));
 
-%grad_im(grad_im < -60) = -60;
-
-MAX = max(grad_im(:))
-
-MIN = min(grad_im(:))
-
-grad_im = (grad_im - MAX) ./ (MIN - MAX);
-imshow(imresize(grad_im, 4));
-
-[unknH, unknW, unknC] = size(grad_im);
-surf(1:unknW, 1:unknH, grad_im)
+[unknH, unknW, unknC] = size(im);
+surf(1:unknW, 1:unknH, im)
 %surfnorm(im);
+
+% ------------------------------------------------------------------
+% 
+function grad_im = interpolate_(im)
+
+    [H,W,C] = size(im);
+    im_T = zeros(W,H,C);
+    
+    im_T(:,:,1) = im(:,:,1)';
+    im_T(:,:,2) = im(:,:,2)';
+    im_T(:,:,3) = im(:,:,3)';
+    
+    im_T = interpolate_normals(im_T);
+    
+    grad_im(:,:,1) = im_T(:,:,1)';
+    grad_im(:,:,2) = im_T(:,:,2)';
+    grad_im(:,:,3) = im_T(:,:,3)';
+    
+    grad_im = interpolate_normals(grad_im);
+    
+end
+
+% ------------------------------------------------------------------
+% 
+function grad_im = interpolate_normals(grad_im)
+
+    rough_mask = grad_im(:,:,1) > 0 | grad_im(:,:,2) > 0;
+    rough_mask = imdilate(rough_mask, strel('disk',7));
+    %imshow(double(rough_mask));
+    
+    [H,W,C] = size(grad_im);
+    
+    for y=1:H
+        in_zero_row           = false;
+        last_ind              = 0;
+        
+        for x=1:W
+            % This first part is to try to interpolate only parts of the
+            % image that we care about.
+            if (~rough_mask(y,x))
+                last_ind      = 0;
+            end
+            
+            if (grad_im(y,x,1) > 0 || grad_im(y,x,2) > 0 )
+                % We found a non-zero gradient.
+                if (in_zero_row)
+                    if (last_ind > 0)
+                        % Then we can interpolate...
+                        % The last gradient index is should be greater than
+                        % zero to indicate that we actually have a value to
+                        % interpolate from.
+                        curr_ind = x;
+                        for k=(last_ind + 1):(curr_ind-1)
+                            grad_im(y, k, 1) = (grad_im(y, k-1, 1) + grad_im(y-1, k, 1) + grad_im(y+1, k, 1)) / 3;
+                            grad_im(y, k, 2) = (grad_im(y, k-1, 2) + grad_im(y-1, k, 2) + grad_im(y+1, k, 2)) / 3;
+                            grad_im(y, k, 3) = (grad_im(y, k-1, 3) + grad_im(y-1, k, 3) + grad_im(y+1, k, 3)) / 3;
+                        end
+                        
+                        last_ind            = curr_ind;
+                    end
+                    
+                    in_zero_row         = false;  
+                else
+                    last_ind            = x;
+                end
+            else
+                % We found a zero gradient.
+                if (in_zero_row)
+                    % Then do nothing
+                else
+                    in_zero_row         = true;
+                end   
+            end
+        end 
+    end
+    
+end
 
 % ------------------------------------------------------------------
 % 
@@ -183,11 +225,11 @@ function s_i = get_s_vectors(centerX, centerY, centerZ, r, ref_imgs)
         avg_y = round(sum(row) / size(row,1));
         avg_x = round(sum(col) / size(col,1));
         
-%         imshow(img)
-%         hold on;
-%         plot(avg_x,avg_y, '*')
-%         %imshow(img)
-%         hold off;
+        imshow(img)
+        hold on;
+        plot(avg_x,avg_y, '*')
+        %imshow(img)
+        hold off;
 
         z = sqrt( r^2 - (avg_x - centerX)^2 - (avg_y - centerY)^2 );
         
@@ -216,12 +258,40 @@ function s_i = get_s_vectors2(centerX, centerY, centerZ, r, ref_imgs)
 
         z = sqrt( r^2 - (avg_x - centerX)^2 - (avg_y - centerY)^2 );
         
-        % FLIP because the image is upside-down.
-%         avg_y = -avg_y;
         
         s = [avg_x; avg_y; z] - [centerX; centerY; centerZ];
         s_i(i,:) = s ./ norm(s);
     end
+end
+
+% ------------------------------------------------------------------
+%
+function grad = get_surface_normal(x, y, r, centerX, centerY, centerZ)
+    %
+    % Get the surface normal/gradient n as unit vec and as we understand 
+    % the orientation w.r.t the sphere. 'z' should be -ve here. (?)
+    %
+    % Returns the surface normal (p,q,-1) where (p,q) is the gradient
+    % at the supplied point.
+    %
+    % Note - This work will be reperformed when we actually input 
+    % the data into table, but we also need it here to determine
+    % the distribution of the table entries.
+    
+    DELTA = 0.01;
+    z = sqrt( r^2 - (x - centerX)^2 - (y - centerY)^2 );
+    n = [x; y; -z] - [centerX; centerY; centerZ];
+    n = n ./ norm(n);
+
+    % If the z component is 0, add a small delta and renormalize.
+    if ( n(3) == 0 )
+       n = n + DELTA;
+       n = n / norm(n);
+       %continue;
+    end
+
+    % Obtain the 'gradient' vector here: (p,q,-1).
+    grad = n ./ -n(3);
 end
 
 
@@ -314,6 +384,9 @@ function img = gradient_to_intensity(p, q)
        end
     end
     
+%     if RESIZE_TO_CONVERT
+%         img = imresize(img, 1 / RS_RATIO);
+%     end
 end
 
 % ------------------------------------------------------------------
@@ -324,9 +397,9 @@ function [LUT, LUT_SZ, PERCENTILES] = generate_table(s_i, LUT_SZ)
     ratio_data = zeros(1,1);
     ratio_data_ind = 1;
     
-    START = -75;
-    END   =  75;
-    INCR  =  0.05;
+    START = -100;
+    END   =  100;
+    INCR  =  0.1;
     
     P = (START:INCR:END);
     P_sz = size(P,2);
@@ -334,11 +407,11 @@ function [LUT, LUT_SZ, PERCENTILES] = generate_table(s_i, LUT_SZ)
     Q_sz = size(Q,2);
 
     for i=1:P_sz
-        p = -P(1,i);
+        p = P(1,i);
         for j=1:Q_sz
             
-            q = -Q(1,j);
-            n = [p,q,1];
+            q = Q(1,j);
+            n = [p,q,-1];
             n = n / norm(n);
 
             % Now we can compute the 'intensities' from the dot
@@ -364,27 +437,27 @@ function [LUT, LUT_SZ, PERCENTILES] = generate_table(s_i, LUT_SZ)
     prctile_x =(1:100/LUT_SZ:100);
     PERCENTILES = prctile(ratio_data, prctile_x);
     
-    %plot(1:size(prctile_x,2), PERCENTILES, '*');
+    plot(1:size(prctile_x,2), PERCENTILES, '*');
     
     LUT_SZ = size(PERCENTILES, 2);
     LUT = zeros(LUT_SZ, LUT_SZ, 2);
     NUM_ENTRIES = ones(LUT_SZ, LUT_SZ);
     
-    %im = zeros(Q_sz,P_sz,3);
+    im = zeros(Q_sz,P_sz,3);
     for i=1:P_sz
-        p = -P(1,i);
+        p = P(1,i);
         for j=1:Q_sz
             
-            q = -Q(1,j);
-            n = [p,q,1];
+            q = Q(1,j);
+            n = [p,q,-1];
             n = n / norm(n);
 
             % Now we can compute the 'intensities' from the dot
             % products of the light intensities (s_i) and the supposed
             % surface normal (n).
-            E_1 = dot(n, s_i(1,:));
-            E_2 = dot(n, s_i(2,:));
-            E_3 = dot(n, s_i(3,:));
+            E_1 = max(dot(n, s_i(1,:)), 0);
+            E_2 = max(dot(n, s_i(2,:)), 0);
+            E_3 = max(dot(n, s_i(3,:)), 0);
 
             if ( E_1 > 0 && E_2 > 0 && E_3 > 0 )
                 
@@ -396,7 +469,7 @@ function [LUT, LUT_SZ, PERCENTILES] = generate_table(s_i, LUT_SZ)
                 PERCENTILES(i_1);
                 PERCENTILES(i_2);
 
-%                 % Store in the table.
+                % Store in the table.
 %                 if ( LUT(i_1, i_2, 1) == 0 && LUT(i_1, i_2, 2) == 0 ) 
 %                     LUT(i_1, i_2, 1) = p;
 %                     LUT(i_1, i_2, 2) = q;
@@ -407,18 +480,18 @@ function [LUT, LUT_SZ, PERCENTILES] = generate_table(s_i, LUT_SZ)
                 LUT(i_1, i_2, 2) = LUT(i_1, i_2, 2) + q;
                 NUM_ENTRIES(i_1, i_2) = NUM_ENTRIES(i_1, i_2) + 1;
 
-               % im(j,i,:) = n;
+                im(j,i,:) = n;
             end
         end
     end
    
     
     % average the results.
-%     NUM_ENTRIES(find(NUM_ENTRIES > 1)) = NUM_ENTRIES(find(NUM_ENTRIES > 1)) - 1;
-%     LUT(:,:,1) = LUT(:,:,1) ./ NUM_ENTRIES;
-%     LUT(:,:,2) = LUT(:,:,2) ./ NUM_ENTRIES;
+    NUM_ENTRIES(find(NUM_ENTRIES > 1)) = NUM_ENTRIES(find(NUM_ENTRIES > 1)) - 1;
+    LUT(:,:,1) = LUT(:,:,1) ./ NUM_ENTRIES;
+    LUT(:,:,2) = LUT(:,:,2) ./ NUM_ENTRIES;
     
-    %imshow(abs(LUT(:,:,1)) + abs(LUT(:,:,1)));
+    imshow(abs(LUT(:,:,1)) + abs(LUT(:,:,1)));
     
 end
 
