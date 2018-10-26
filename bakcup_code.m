@@ -233,7 +233,6 @@ function grad_im = interpolate_normals(grad_im)
             end
         end 
     end
-    
 end
 
 % ------------------------------------------------------------------

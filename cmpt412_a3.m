@@ -15,23 +15,29 @@ close all;
 %
 % In display, you've normalized your gradients to have unit length
 % (as unit normals)
+% 
+% Depth image looks WAY better for synth images when we use normalised
+% unit vecs: also,
+% Gradient direction ( in y) could be weird, double check this
+% in poisson solver. (see notes)
+%
 % ----------------------
 
 ref1 = rgb2gray(im2double(imread('./synth/sphere1R.png')));
 ref2 = rgb2gray(im2double(imread('./synth/sphere2R.png')));
 ref3 = rgb2gray(im2double(imread('./synth/sphere3R.png')));
 
-ref1 = rgb2gray(im2double(imread('./real/sphere-lamp1.tif')));
-ref2 = rgb2gray(im2double(imread('./real/sphere-lamp3.tif')));
-ref3 = rgb2gray(im2double(imread('./real/sphere-lamp2.tif')));
+% ref1 = rgb2gray(im2double(imread('./real/sphere-lamp1.tif')));
+% ref2 = rgb2gray(im2double(imread('./real/sphere-lamp3.tif')));
+% ref3 = rgb2gray(im2double(imread('./real/sphere-lamp2.tif')));
 
-unknown1 = rgb2gray(im2double(imread('./synth/cone1.tif')));
-unknown2 = rgb2gray(im2double(imread('./synth/cone2.tif')));
-unknown3 = rgb2gray(im2double(imread('./synth/cone3.tif')));
+unknown1 = rgb2gray(im2double(imread('./synth/sphere1R.tif')));
+unknown2 = rgb2gray(im2double(imread('./synth/sphere2R.tif')));
+unknown3 = rgb2gray(im2double(imread('./synth/sphere3R.tif')));
 
-unknown1 = rgb2gray(im2double(imread('./real/cylinder-lamp1.tif')));
-unknown2 = rgb2gray(im2double(imread('./real/cylinder-lamp3.tif')));
-unknown3 = rgb2gray(im2double(imread('./real/cylinder-lamp2.tif')));
+% unknown1 = mat2gray(im2double(imread('./real/ellipsoid-lamp1.png')));
+% unknown2 = mat2gray(im2double(imread('./real/ellipsoid-lamp3.tif')));
+% unknown3 = mat2gray(im2double(imread('./real/ellipsoid-lamp2.tif')));
 
 % imshow(unknown1);
 % imshow(unknown2);
@@ -41,18 +47,18 @@ unknown3 = rgb2gray(im2double(imread('./real/cylinder-lamp2.tif')));
 ref_imgs = {ref1, ref2, ref3};
 
 % These params are for the non-resized sphere roughly:
-% centerX = 320;
-% centerY = 240;
-% centerZ = 0;
-% r       = 152;
-
-% sphereXR.tif:
 centerX = 360;
 centerY = 260;
 centerZ = 0;
 r       = 152;
 
-% imshow(ref1);
+% sphereXR.tif:
+% centerX = 318; %360; % YOU EYEBALLED THIS -- SHOULD CORRECT IT LATER!
+% centerY = 296; %260;
+% centerZ = 0;
+% r       = 152;
+
+ imshow(ref1);
 % imshow(ref2);
 % imshow(ref3);
 % imshow(ref1);
@@ -132,20 +138,15 @@ grad_im = normal_im;
 
 grad_im = gradient_to_intensity(grad_im(:,:,1), grad_im(:,:,2));
 
-% Maybe some sort of clamping would be useful here?
-
-%grad_im(grad_im < -60) = -60;
-
 MAX = max(grad_im(:))
-
 MIN = min(grad_im(:))
 
 grad_im = (grad_im - MAX) ./ (MIN - MAX);
+grad_im = grad_im.^2;
 imshow(imresize(grad_im, 4));
 
 [unknH, unknW, unknC] = size(grad_im);
 surf(1:unknW, 1:unknH, grad_im)
-%surfnorm(im);
 
 % ------------------------------------------------------------------
 % 
