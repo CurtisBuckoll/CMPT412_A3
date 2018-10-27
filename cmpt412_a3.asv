@@ -16,27 +16,28 @@ close all;
 % In display, you've normalized your gradients to have unit length
 % (as unit normals)
 % 
-% depth  looks WAY better for synth images when
+% Depth image looks WAY better for synth images when we use normalised
+% unit vecs: also,
 % Gradient direction ( in y) could be weird, double check this
 % in poisson solver. (see notes)
 %
 % ----------------------
 
-ref1 = rgb2gray(im2double(imread('./synth/sphere1R.png')));
-ref2 = rgb2gray(im2double(imread('./synth/sphere2R.png')));
-ref3 = rgb2gray(im2double(imread('./synth/sphere3R.png')));
+% ref1 = rgb2gray(im2double(imread('./synth/sphere1R.png')));
+% ref2 = rgb2gray(im2double(imread('./synth/sphere2R.png')));
+% ref3 = rgb2gray(im2double(imread('./synth/sphere3R.png')));
 
-% ref1 = rgb2gray(im2double(imread('./real/sphere-lamp1.tif')));
-% ref2 = rgb2gray(im2double(imread('./real/sphere-lamp3.tif')));
-% ref3 = rgb2gray(im2double(imread('./real/sphere-lamp2.tif')));
+ref1 = rgb2gray(im2double(imread('./real/sphere-lamp1.tif')));
+ref2 = rgb2gray(im2double(imread('./real/sphere-lamp3.tif')));
+ref3 = rgb2gray(im2double(imread('./real/sphere-lamp2.tif')));
 
-unknown1 = rgb2gray(im2double(imread('./synth/sphere1R.tif')));
-unknown2 = rgb2gray(im2double(imread('./synth/sphere2R.tif')));
-unknown3 = rgb2gray(im2double(imread('./synth/sphere3R.tif')));
+% unknown1 = rgb2gray(im2double(imread('./synth/sphere1R.tif')));
+% unknown2 = rgb2gray(im2double(imread('./synth/sphere2R.tif')));
+% unknown3 = rgb2gray(im2double(imread('./synth/sphere3R.tif')));
 
-% unknown1 = mat2gray(im2double(imread('./real/ellipsoid-lamp1.png')));
-% unknown2 = mat2gray(im2double(imread('./real/ellipsoid-lamp3.tif')));
-% unknown3 = mat2gray(im2double(imread('./real/ellipsoid-lamp2.tif')));
+unknown1 = mat2gray(im2double(imread('./real/sphere-lamp1.tif')));
+unknown2 = mat2gray(im2double(imread('./real/sphere-lamp3.tif')));
+unknown3 = mat2gray(im2double(imread('./real/sphere-lamp2.tif')));
 
 % imshow(unknown1);
 % imshow(unknown2);
@@ -46,25 +47,17 @@ unknown3 = rgb2gray(im2double(imread('./synth/sphere3R.tif')));
 ref_imgs = {ref1, ref2, ref3};
 
 % These params are for the non-resized sphere roughly:
-centerX = 360;
-centerY = 260;
-centerZ = 0;
-r       = 152;
-
-% sphereXR.tif:
-% centerX = 318; %360; % YOU EYEBALLED THIS -- SHOULD CORRECT IT LATER!
-% centerY = 296; %260;
+% centerX = 360;
+% centerY = 260;
 % centerZ = 0;
 % r       = 152;
 
- imshow(ref1);
-% imshow(ref2);
-% imshow(ref3);
-% imshow(ref1);
+% sphereXR.tif:
+centerX = 318; %360; % YOU EYEBALLED THIS -- SHOULD CORRECT IT LATER!
+centerY = 296; %260;
+centerZ = 0;
+r       = 152;
 
-ratio_data1 = zeros(2,1);
-ratio_data2 = zeros(2,1);
-i = 1;
 
 LUT_SZ = 500;
 CREATE_TABLE = false;
@@ -80,7 +73,7 @@ if ( CREATE_TABLE )
 end
 
 
-% Need this for later..
+% We will need this information for later.
 [nz_row_ind, nz_col_ind] = find(abs(LUT(:,:,1)) + abs(LUT(:,:,2)) > 0);
 
 % -----------------------
@@ -120,32 +113,39 @@ for y=1:unkn_H
             
             % ---------------------------------------
             
-            grad_im(y,x,:)   = grad;
+            grad_im(y,x,:)   = grad / (-1);
             normal_im(y,x,:) = grad / norm(grad);
-            
         end
     end
 end
 
 display_gradient(normal_im, 20);
+display_gradient(grad_im, 20);
 
 imshow(normal_im);
 
-
-% TESTTIGMG
-grad_im = normal_im;
-
 grad_im = gradient_to_intensity(grad_im(:,:,1), grad_im(:,:,2));
 
-MAX = max(grad_im(:))
-MIN = min(grad_im(:))
+MAX = max(grad_im(:));
+MIN = min(grad_im(:));
 
-grad_im = (grad_im - MAX) ./ (MIN - MAX);
+grad_im = (grad_im - MIN) ./ (MAX - MIN);
 grad_im = grad_im.^2;
 imshow(imresize(grad_im, 4));
 
+figure
 [unknH, unknW, unknC] = size(grad_im);
-surf(1:unknW, 1:unknH, grad_im)
+h = surf(1:unknW, 1:unknH, grad_im);
+set(h,'LineStyle','none');
+rotate3d on;
+
+
+
+
+
+
+
+
 
 % ------------------------------------------------------------------
 % 
@@ -216,9 +216,6 @@ function s_i = get_s_vectors2(centerX, centerY, centerZ, r, ref_imgs)
 
         z = sqrt( r^2 - (avg_x - centerX)^2 - (avg_y - centerY)^2 );
         
-        % FLIP because the image is upside-down.
-%         avg_y = -avg_y;
-        
         s = [avg_x; avg_y; z] - [centerX; centerY; centerZ];
         s_i(i,:) = s ./ norm(s);
     end
@@ -229,6 +226,8 @@ end
 %
 function img = gradient_to_intensity(p, q)
 
+    % This takes too long if we work with a full resolution image, so scale
+    % down here. Outside this function, the caller can size back up.
     RESIZE_TO_CONVERT = true;
     RS_RATIO = 0.25;
     
@@ -238,6 +237,7 @@ function img = gradient_to_intensity(p, q)
     end
     
     [imh, imw, nb] = size(p);
+    
     % Set up the im2var mapping matrix.
     im2var = zeros(imh, imw);
     im2var(1:imh*imw) = 1:imh*imw;
@@ -246,15 +246,15 @@ function img = gradient_to_intensity(p, q)
     % 2*(#pix(src)) + 1 rows, where the + 1 is for the boundary condition. 
     % We need #pix(src) columns since we need to consider every pixel in
     % src.
-    A = sparse(4*imw*imh + 1, imw*imh);
-    b = zeros(4*imw*imh + 1, 1);
+    A = sparse(2*imw*imh + 1, imw*imh);
+    b = zeros(2*imw*imh + 1, 1);
 
     e = 0;
     
     for y=1:(imh)
         for x=1:(imw)
 
-            % Objective 1
+            % The equation in the x direction at this pixel.
             if ( x ~= imw )
                 e = e + 1;
                 % check bounds - at rightmost cases we leave the gradient
@@ -264,37 +264,21 @@ function img = gradient_to_intensity(p, q)
                 b(e)                = p(y,x); 
             end
                         
-            % Objective 2
+            % The equation in the y direction at this pixel.
             if ( y ~= imh )
                 e = e + 1;
                 % check bounds - at bottommost cases we leave the gradient
                 % at zero, and so we can just ignore.
                 A(e, im2var(y+1,x)) =  1;
                 A(e, im2var(y,x))   = -1;   
-                b(e)                = q(y,x);
-            end
-            
-            if ( x ~= 1 )
-                e = e + 1;
-                % check bounds - at leftmost cases we leave the gradient
-                % at zero, and so we can just ignore.
-                A(e, im2var(y,x-1)) =  1;
-                A(e, im2var(y,x))   = -1;
-                b(e)                = -p(y,x-1);
-            end
-
-            if ( y ~= 1 )
-                e = e + 1;
-                % check bounds - at topmost cases we leave the gradient
-                % at zero, and so we can just ignore.
-                A(e, im2var(y-1,x)) =  1;
-                A(e, im2var(y,x))   = -1;   
-                b(e)                = -q(y-1,x);
+                b(e)                = -q(y,x);
             end
         end
     end
    
-    % Objective 3
+    % This resolves the constant C in integretion- just set the corner
+    % pixel to have intensity 0. Since we normalize the depth image to
+    % [0,1], it doesn't really matter what we set this to.
     e = e + 1;
     A(e, im2var(1,1)) = 1;
     b(e) = 0;
@@ -313,7 +297,6 @@ function img = gradient_to_intensity(p, q)
            ind = ind + 1;
        end
     end
-    
 end
 
 % ------------------------------------------------------------------
@@ -348,7 +331,7 @@ function [LUT, LUT_SZ, PERCENTILES] = generate_table(s_i, LUT_SZ)
             E_2 = dot(n, s_i(2,:));
             E_3 = dot(n, s_i(3,:));
 
-            % maybe should check if E_1 > 0 too                        ?????
+            % Ignore anything where the intensity is below zero.
             if ( E_1 > 0 && E_2 > 0 && E_3 > 0 )
                 r1 = ((E_1 * 255) + 1) / ((E_2 * 255) + 1);
                 r2 = ((E_2 * 255) + 1) / ((E_3 * 255) + 1);
@@ -361,16 +344,17 @@ function [LUT, LUT_SZ, PERCENTILES] = generate_table(s_i, LUT_SZ)
         end
     end
     
+    % Now that we have the spread of the data, determine the percentiles in
+    % the range of the table size. This will determine how we map ratio
+    % scores to indices, and provide more indices to where the ratios are
+    % clustered.
     prctile_x =(1:100/LUT_SZ:100);
     PERCENTILES = prctile(ratio_data, prctile_x);
-    
-    %plot(1:size(prctile_x,2), PERCENTILES, '*');
     
     LUT_SZ = size(PERCENTILES, 2);
     LUT = zeros(LUT_SZ, LUT_SZ, 2);
     NUM_ENTRIES = ones(LUT_SZ, LUT_SZ);
     
-    %im = zeros(Q_sz,P_sz,3);
     for i=1:P_sz
         p = -P(1,i);
         for j=1:Q_sz
@@ -395,30 +379,20 @@ function [LUT, LUT_SZ, PERCENTILES] = generate_table(s_i, LUT_SZ)
                 [diff_r2, i_2] = min(abs(PERCENTILES - r2));
                 PERCENTILES(i_1);
                 PERCENTILES(i_2);
-
-%                 % Store in the table.
-%                 if ( LUT(i_1, i_2, 1) == 0 && LUT(i_1, i_2, 2) == 0 ) 
-%                     LUT(i_1, i_2, 1) = p;
-%                     LUT(i_1, i_2, 2) = q;
-%                     NUM_ENTRIES(i_1, i_2) = NUM_ENTRIES(i_1, i_2) + 1;
-%                 end
                 
+                % Grab the p,q and add it to the running total. We will
+                % average the result outside this loop.
                 LUT(i_1, i_2, 1) = LUT(i_1, i_2, 1) + p;
                 LUT(i_1, i_2, 2) = LUT(i_1, i_2, 2) + q;
                 NUM_ENTRIES(i_1, i_2) = NUM_ENTRIES(i_1, i_2) + 1;
 
-               % im(j,i,:) = n;
             end
         end
     end
-   
-    
-    % average the results.
-%     NUM_ENTRIES(find(NUM_ENTRIES > 1)) = NUM_ENTRIES(find(NUM_ENTRIES > 1)) - 1;
-%     LUT(:,:,1) = LUT(:,:,1) ./ NUM_ENTRIES;
-%     LUT(:,:,2) = LUT(:,:,2) ./ NUM_ENTRIES;
-    
-    %imshow(abs(LUT(:,:,1)) + abs(LUT(:,:,1)));
+       
+    % Average the results.
+    NUM_ENTRIES(find(NUM_ENTRIES > 1)) = NUM_ENTRIES(find(NUM_ENTRIES > 1)) - 1;
+    LUT(:,:,1) = LUT(:,:,1) ./ NUM_ENTRIES;
+    LUT(:,:,2) = LUT(:,:,2) ./ NUM_ENTRIES;
     
 end
-
